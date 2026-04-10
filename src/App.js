@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import AddTransaction from "./components/AddTransaction";
 import TransactionList from "./components/TransactionList";
 import Summary from "./components/Summary";
@@ -15,6 +15,8 @@ import {
   deleteDoc,
   doc,
   updateDoc,
+  query,
+  where,
 } from "firebase/firestore";
 
 import "./styles.css";
@@ -32,33 +34,37 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // 📥 Fetch ALL and filter manually (🔥 FIX)
-  const fetchData = async () => {
+  // 📥 Fetch Data (✅ FIXED + OPTIMIZED)
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+
     try {
-      const snapshot = await getDocs(collection(db, "transactions"));
+      const q = query(
+        collection(db, "transactions"),
+        where("userId", "==", user.uid)
+      );
+
+      const snapshot = await getDocs(q);
 
       const data = snapshot.docs.map((docItem) => ({
         id: docItem.id,
         ...docItem.data(),
       }));
 
-      // 🔥 FILTER USER DATA HERE
-      const userData = data.filter((t) => t.userId === user?.uid);
+      console.log("Fetched:", data);
 
-      console.log("Fetched:", userData);
-
-      setTransactions(userData);
+      setTransactions(data);
     } catch (error) {
       console.error("Fetch error:", error);
     }
-  };
+  }, [user]);
 
   // 📦 Fetch when user changes
   useEffect(() => {
-    if (user) fetchData();
-  }, [user]);
+    fetchData();
+  }, [fetchData]);
 
-  // ➕ ADD (FIXED)
+  // ➕ ADD
   const addTransaction = async (tx) => {
     try {
       const newData = {
@@ -70,7 +76,7 @@ function App() {
 
       await addDoc(collection(db, "transactions"), newData);
 
-      fetchData(); // 🔥 FORCE REFRESH
+      fetchData();
     } catch (error) {
       console.error("Add error:", error);
     }
@@ -78,15 +84,23 @@ function App() {
 
   // ❌ DELETE
   const deleteTx = async (id) => {
-    await deleteDoc(doc(db, "transactions", id));
-    fetchData();
+    try {
+      await deleteDoc(doc(db, "transactions", id));
+      fetchData();
+    } catch (error) {
+      console.error("Delete error:", error);
+    }
   };
 
   // ✏️ UPDATE
   const updateTransaction = async (updatedTx) => {
-    await updateDoc(doc(db, "transactions", updatedTx.id), updatedTx);
-    fetchData();
-    setEditTx(null);
+    try {
+      await updateDoc(doc(db, "transactions", updatedTx.id), updatedTx);
+      fetchData();
+      setEditTx(null);
+    } catch (error) {
+      console.error("Update error:", error);
+    }
   };
 
   if (!user) return <Login />;
